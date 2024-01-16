@@ -10,6 +10,9 @@ The code is written in Python 3.10. The required packages to run the experiments
 pip install -r requirements.txt
 ```
 
+In addition, the hash function needs to be compiled by following the directions in `/kwisehash/README.md`.
+
+
 ### Download the data and queries
 
 The experiments use the IMDB and STATS databases with queries provided by the [End-to-End CardEst Benchmark](https://github.com/Nathaniel-Han/End-to-End-CardEst-Benchmark). To run the experiments, first download the required data using the following commands:

@@ -18,6 +18,8 @@ import pandas as pd
 from tap import Tap
 from tqdm import tqdm
 
+from kwisehash import KWiseHash
+
 camel_to_snake_re = re.compile(r"(?<!^)(?=[A-Z])")
 selection_ops_re = re.compile(r"(\>\=?|\<\=?|\<\>|\=|BETWEEN|IN|LIKE|NOT LIKE)")
 attribute_re = re.compile(r"(_|[a-zA-Z])(_|\d|[a-zA-Z])*.(_|[a-zA-Z])+")
@@ -69,77 +71,14 @@ class Timer(object):
         return time.perf_counter() - self.start
 
 
-class TwoWayIndependentHash(object):
-    seeds: torch.Tensor
-    size: Tuple[int]
-
-    def __init__(self, *size: int) -> None:
-        # Note: careful with integer overflows when the prime is large
-        # PyTorch only supports signed 64-bit integers, limiting the domain by half
-        # Numpy does support unsigned 64-bit integers
-
-        self.size = size
-        self.seeds = torch.empty(2, 1, math.prod(size), dtype=torch.long)
-        self.reset_seeds()
-
-    def reset_seeds(self) -> None:
-        # Create parameters for a random bijective permutation function
-        # https://en.wikipedia.org/wiki/Universal_hashing
-        a = torch.randint(1, MERSENNE_PRIME, (1, 1, math.prod(self.size)))
-        b = torch.randint(0, MERSENNE_PRIME, (1, 1, math.prod(self.size)))
-
-        torch.cat((a, b), dim=0, out=self.seeds)
-
-    def __call__(self, input: torch.Tensor) -> torch.Tensor:
-        assert input.dim() == 2
-        assert input.size(1) == 1
-
-        a, b = self.seeds
-        output = ((a * input) + b) % MERSENNE_PRIME
-        return output.view(-1, *self.size)
-
-
-class FourWayIndependentHash(object):
-    seeds: torch.Tensor
-    size: Tuple[int]
-
-    def __init__(self, *size: int) -> None:
-
-        self.size = size
-        self.seeds = torch.empty(4, 1, math.prod(size), dtype=torch.long)
-        self.reset_seeds()
-
-    def reset_seeds(self) -> None:
-        # Create parameters for a random bijective permutation function
-        # https://en.wikipedia.org/wiki/Universal_hashing
-        abc = torch.randint(1, MERSENNE_PRIME, (3, 1, math.prod(self.size)))
-        d = torch.randint(0, MERSENNE_PRIME, (1, 1, math.prod(self.size)))
-
-        torch.cat((abc, d), dim=0, out=self.seeds)
-
-    def __call__(self, input: torch.Tensor) -> torch.Tensor:
-        assert input.dim() == 2
-        assert input.size(1) == 1
-
-        a, b, c, d = self.seeds
-        output = (a * input**3 + b * input**2 + c * input + d) % MERSENNE_PRIME
-        return output.view(-1, *self.size)
-
-
 class SignHash(object):
-    fn: Union[TwoWayIndependentHash, FourWayIndependentHash]
+    fn: KWiseHash
 
     def __init__(self, *size, k=2) -> None:
-
-        if k == 2:
-            self.fn = TwoWayIndependentHash(*size)
-        elif k == 4:
-            self.fn = FourWayIndependentHash(*size)
-        else:
-            raise ValueError("k must be 2 or 4")
+        self.fn = KWiseHash(*size, k=k)
 
     def __call__(self, items: torch.Tensor) -> torch.Tensor:
-        return (self.fn(items) % 2) * 2 - 1
+        return self.fn.sign(items)
 
 
 class ComposedSigns(object):
@@ -161,20 +100,14 @@ class ComposedSigns(object):
 
 
 class BinHash(object):
-    fn: Union[TwoWayIndependentHash, FourWayIndependentHash]
+    fn: KWiseHash
 
     def __init__(self, *size, bins, k=2) -> None:
         self.num_bins = bins
-
-        if k == 2:
-            self.fn = TwoWayIndependentHash(*size)
-        elif k == 4:
-            self.fn = FourWayIndependentHash(*size)
-        else:
-            raise ValueError("k must be 2 or 4")
+        self.fn = KWiseHash(*size, k=k)
 
     def __call__(self, items: torch.Tensor) -> torch.Tensor:
-        return self.fn(items) % self.num_bins
+        return self.fn.bin(items, self.num_bins)
 
 
 MethodName = Literal["exact", "ams", "compass-merge", "compass-partition", "count-conv"]
@@ -1063,7 +996,7 @@ def experiment():
 
         sign_hashes = []
         for _ in query.joins:
-            sign_hash = SignHash(num_estimates, k=2)
+            sign_hash = SignHash(num_estimates, k=4)
             memory_usage += sign_hash.fn.seeds.numel() * 8
             sign_hashes.append(sign_hash)
 
@@ -1072,7 +1005,7 @@ def experiment():
 
         sign_hashes = []
         for _ in query.joins:
-            sign_hash = SignHash(num_estimates, k=2)
+            sign_hash = SignHash(num_estimates, k=4)
             memory_usage += sign_hash.fn.seeds.numel() * 8
             sign_hashes.append(sign_hash)
 
@@ -1158,9 +1091,9 @@ def experiment():
                 signs = 1
                 for attr_values, join_idx in zip(batch, join_indices):
                     sign_hash = sign_hashes[join_idx]
-                    signs = signs * sign_hash(attr_values.unsqueeze(1))
+                    signs = signs * sign_hash(attr_values)
 
-                id2sketch[id] += torch.sum(signs, dim=0)
+                id2sketch[id] += torch.sum(signs, dim=1)
 
     elif args.method == "count-conv":
 
@@ -1199,8 +1132,6 @@ def experiment():
                     batch, all_join_indices, components
                 ):
 
-                    attr_values = attr_values.unsqueeze(1)
-
                     bin_hash = bin_hashes[component]
                     bins = bins + bin_hash(attr_values)
 
@@ -1211,7 +1142,7 @@ def experiment():
                         signs = signs * sign_hash(attr_values)
 
                 bins = bins % args.bins
-                id2sketch[id].scatter_add_(1, bins.T, signs.T)
+                id2sketch[id].scatter_add_(1, bins, signs)
 
     elif args.method == "compass-partition":
 
@@ -1246,8 +1177,6 @@ def experiment():
                 dimension_idx = len(join_indices) - 1
                 for attr_values, join_idx in zip(batch, join_indices):
 
-                    attr_values = attr_values.unsqueeze(1)
-
                     bin_scale = args.bins**dimension_idx
                     dimension_idx -= 1
 
@@ -1257,7 +1186,7 @@ def experiment():
                     sign_hash = sign_hashes[join_idx]
                     signs = signs * sign_hash(attr_values)
 
-                sketch.scatter_add_(1, bins.T, signs.T)
+                sketch.scatter_add_(1, bins, signs)
 
     elif args.method == "compass-merge":
 
@@ -1280,16 +1209,15 @@ def experiment():
                 sketch_idx += 1
 
                 for attr_values in node2batches[node]:
-                    attr_values = attr_values.unsqueeze(1)
                     bins = bin_hash(attr_values)
                     signs = sign_hash(attr_values)
-                    sketch.scatter_add_(1, bins.T, signs.T)
+                    sketch.scatter_add_(1, bins, signs)
 
     stream_time = stream_timer.stop()
 
     inference_timer = Timer()
 
-    print("Estimate cardinality...")
+    print("Estimating cardinality...")
     if args.method == "ams":
         estimates = ams_estimate(id2sketch, args.means)
 
@@ -1322,6 +1250,7 @@ def experiment():
     print("Inference time:", inference_time)
     print("Total time:", init_time + stream_time + inference_time)
 
+    estimates = estimates.tolist()
     print(estimates)
 
     fieldnames = [
@@ -1343,7 +1272,7 @@ def experiment():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-        for estimate in estimates.tolist():
+        for estimate in estimates:
             writer.writerow(
                 {
                     "method": args.method,
