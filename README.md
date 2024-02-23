@@ -1,6 +1,6 @@
 # Convolution and Cross-Correlation of Count Sketches Enables Fast Cardinality Estimation of Multi-Join Queries
 
-This repository contains the source code, extended results, and cardinality estimates for the experiments of the research paper under review at SIGMOD 2024.
+This repository contains the source code, extended results, and cardinality estimates for the experiments of the research paper published at the International Conference on Management of Data (SIGMOD) 2024.
 
 ## Requirements
 
@@ -67,3 +67,17 @@ The absolute relative error plots, in addition to the timing plots of each stage
 ## Cardinality estimates
 
 The cardinality estimates for all the sub-queries of both the STATS and IMDB databases are provided in [`/estimates`](estimates), which follows the same format as the estimates provided by the [End-to-End CardEst Benchmark](https://github.com/Nathaniel-Han/End-to-End-CardEst-Benchmark).
+
+
+## Citation
+
+If you use this code for your research, please cite our paper:
+
+```
+@inproceedings{heddes2024convolution,
+  title={Convolution and Cross-Correlation of Count Sketches Enables Fast Cardinality Estimation of Multi-Join Queries},
+  author={Heddes, Mike and Nunes, Igor and Givargis, Tony and Nicolau, Alex},
+  booktitle={Proceedings of the 2024 ACM SIGMOD International Conference on Management of Data},
+  year={2024}
+}
+```

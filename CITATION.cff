@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this code for your research, please cite our paper."
+authors:
+- family-names: "Heddes"
+  given-names: "Mike"
+  orcid: "https://orcid.org/0000-0002-9276-458X"
+- family-names: "Nunes"
+  given-names: "Igor"
+- family-names: "Givargis"
+  given-names: "Tony"
+- family-names: "Nicolau"
+  given-names: "Alex"
+title: "Convolution and Cross-Correlation of Count Sketches Enables Fast Cardinality Estimation of Multi-Join Queries"
+url: "https://github.com/mikeheddes/fast-multi-join-sketch"
+preferred-citation:
+  type: conference-paper
+  authors:
+  - family-names: "Heddes"
+    given-names: "Mike"
+    orcid: "https://orcid.org/0000-0002-9276-458X"
+  - family-names: "Nunes"
+    given-names: "Igor"
+  - family-names: "Givargis"
+    given-names: "Tony"
+  - family-names: "Nicolau"
+    given-names: "Alex"
+  title: "Convolution and Cross-Correlation of Count Sketches Enables Fast Cardinality Estimation of Multi-Join Queries"
+  collection-title: "Proceedings of the 2024 ACM SIGMOD International Conference on Management of Data"
+  collection-type: proceedings
+  year: 2024
